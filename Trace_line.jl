@@ -98,6 +98,23 @@ function run_poincare()
             color = :red, markersize = 4)
 
     display(fig)
+
+    fig2 = Figure(size = (800, 800))
+    ax2 = Axis(fig2[1, 1], 
+        xlabel = "R (m)", 
+        ylabel = "Z (m)", 
+        title = "Poincaré Section at ϕ = 0",
+        aspect = DataAspect()
+    )
+
+    poincare_xy = sqrt.(poincare_x .* poincare_x .+ poincare_y .* poincare_y)
+
+    scatter!(ax2, poincare_xy, poincare_z, markersize = 2, color = :black)
+    
+    # Save and display
+    save("poincare_landreman_paul.png", fig2)
+    display(fig2)
+    display(fig)
     
 end
 
