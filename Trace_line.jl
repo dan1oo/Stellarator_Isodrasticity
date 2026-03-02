@@ -8,13 +8,25 @@ include("Coil.jl")
 
 function run_poincare()
 
-    radius = 1.3
-    phi = 0 #issues on y axis (90, 270 degrees)
-    Length = 1500.0
-    
+
+    #= 
+    ------------------------------------------------------------------------------------------------------
+    Initial Conditions:
+    Define radius, azimuthal angle, and field line 
+
+    =#
+
     coil_file = "landreman_paul.json"
     Nquad = 64 
     coils = get_coils_from_file(Float64, coil_file, Nquad)
+
+    radius = 1.3    # Distance from origin at Z = 0
+    phi = 0         #Azimuthal angle, issues on y axis (90, 270 degrees)
+    Length = 1500.0 # Integration Path length
+
+
+
+    # Poincare Section
 
     # Arrays to store our points
     poincare_x = Float64[]
@@ -30,8 +42,8 @@ function run_poincare()
         return -x*sin(phi) + y * cos(phi)
     end
 
-    # When crosses the plane, save the x and z coordinates. 
-    # We filter for u[1] > 0 to only get the phi = 0 plane, ignoring the phi = pi plane.
+    # When crosses the plane, save the x y and z coordinates. 
+    
     function save_point!(integrator)
         
         push!(poincare_x, integrator.u[1])
@@ -42,6 +54,9 @@ function run_poincare()
 
     # Set up the callback
     cb = ContinuousCallback(plane_condition, save_point!, nothing; save_positions=(false, false))
+
+
+    #
 
     #  Define the ODE: dx/ds = B / |B|v- Magnetic field ODE
     function b_field_ode(u, p, t)
@@ -114,7 +129,7 @@ function run_poincare()
     # Save and display
     save("poincare_landreman_paul.png", fig2)
     display(fig2)
-    display(fig)
+    
     
 end
 
