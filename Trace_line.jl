@@ -20,10 +20,7 @@ function run_poincare()
     Nquad = 64 
     coils = get_coils_from_file(Float64, coil_file, Nquad)
 
-    radius = 1.3    # Distance from origin at Z = 0
-    phi = 0         #Azimuthal angle, issues on y axis (90, 270 degrees)
-    Length = 1500.0 # Integration Path length
-
+    
 
 
     # Poincare Section
@@ -65,21 +62,28 @@ function run_poincare()
     end
 
     # Starting Point
-    
-    r = radius     # Radial distance
-    L_max = Length # Total distance to trace field line
-    phi = phi      # Starting Phi
-
-    x = r * cos(phi)
-    y = r * sin(phi)
 
 
-    u0 = SA[x, y, 0.0]
-    prob = ODEProblem(b_field_ode, u0, (0.0, L_max))
+    radius = range(1.0,1.5, length = 15)    # Distance from origin at Z = 0
+    phi = 4.0*pi/5.0        #Azimuthal angle, issues on y axis (90, 270 degrees)
+    Length = 1500.0 # Integration Path length
+
+    for r in radius
         
-    # We use Vern9() for high precision, keeping tolerances tight so no drift
+        L_max = Length # Total distance to trace field line
+        phi = phi      # Starting Phi
 
-    solve(prob, Vern9(), reltol=1e-10, abstol=1e-10, callback=cb, save_everystep=false, save_start=false, save_end=false)
+        x = r * cos(phi)
+        y = r * sin(phi)
+
+
+        u0 = SA[x, y, 0.0]
+        prob = ODEProblem(b_field_ode, u0, (0.0, L_max))
+            
+        # We use Vern9() for high precision, keeping tolerances tight so no drift
+
+        solve(prob, Vern9(), reltol=1e-10, abstol=1e-10, callback=cb, save_everystep=false, save_start=false, save_end=false)
+    end
     
     # Plot Coils and Magnetic Field surface
 
