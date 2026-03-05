@@ -147,7 +147,7 @@ for r in multi_r1
 
     # Run the simulation for this specific radius
     # We unpack the 6 returned vectors into temporary variables
-    px, py, pz, rx, ry, rz = run_poincare(r, 0, 5000.0)
+    px, py, pz, rx, ry, rz = run_poincare(r, 0, 20000.0)
 
     # 3. Append the results to your master lists
     append!(poincare_x, px)
@@ -171,7 +171,7 @@ for r in multi_r2
 
     # Run the simulation for this specific radius
     # We unpack the 6 returned vectors into temporary variables
-    px, py, pz, rx, ry, rz = run_poincare(r, pi/5.0, 5000.0)
+    px, py, pz, rx, ry, rz = run_poincare(r, pi/5.0, 20000.0)
 
     # 3. Append the results to your master lists
     append!(poincare_x, px)
@@ -195,7 +195,7 @@ for r in multi_r3
 
     # Run the simulation for this specific radius
     # We unpack the 6 returned vectors into temporary variables
-    px, py, pz, rx, ry, rz = run_poincare(r, 2.0*pi/5.0, 5000.0)
+    px, py, pz, rx, ry, rz = run_poincare(r, 2.0*pi/5.0, 20000.0)
 
     # 3. Append the results to your master lists
     append!(poincare_x, px)
@@ -219,7 +219,7 @@ for r in multi_r4
 
     # Run the simulation for this specific radius
     # We unpack the 6 returned vectors into temporary variables
-    px, py, pz, rx, ry, rz = run_poincare(r, 3.0*pi/5.0, 5000.0)
+    px, py, pz, rx, ry, rz = run_poincare(r, 3.0*pi/5.0, 20000.0)
 
     # 3. Append the results to your master lists
     append!(poincare_x, px)
@@ -231,11 +231,10 @@ for r in multi_r4
     append!(ridge_z, rz)
 end
 
+
 # Define your search space
-multi_r5 = range(1.0, 1.25, length=10)
+multi_r5 = range(1.1, 1.25, length=10)
 phi = 4.0*pi/5.0
-
-
 # 2. Run the loop across the radial range
 for r in multi_r5
     
@@ -243,7 +242,7 @@ for r in multi_r5
 
     # Run the simulation for this specific radius
     # We unpack the 6 returned vectors into temporary variables
-    px, py, pz, rx, ry, rz = run_poincare(r, 4.0*pi/5.0, 5000.0)
+    px, py, pz, rx, ry, rz = run_poincare(r, 4.0*pi/5.0, 20000.0)
 
     # 3. Append the results to your master lists
     append!(poincare_x, px)
@@ -254,6 +253,8 @@ for r in multi_r5
     append!(ridge_y, ry)
     append!(ridge_z, rz)
 end
+
+
 
 
 
@@ -265,31 +266,31 @@ end
 #-----------------------------------------------------------------------
 
 # Initialize 3D Scene
-    fig = Figure(size = (1200, 900))
-    # Axis3 provides the 3D container for our coils and field lines
-    ax = Axis3(fig[1, 1], title = "3D Landreman-Paul Magnetic Topology", aspect = :data)
+fig = Figure(size = (1200, 900))
+# Axis3 provides the 3D container for our coils and field lines
+ax = Axis3(fig[1, 1], title = "3D Landreman-Paul Magnetic Topology", aspect = :data)
 
-    # Plot the Coils
-    # Each coil is an array of quadrature points 'rs'
-    for (i, c) in enumerate(coils)
-        # Extract X, Y, Z coordinates for the wire path
-        pts = c.rs
-        xs = [p[1] for p in pts]
-        ys = [p[2] for p in pts]
-        zs = [p[3] for p in pts]
-        
-        # Close the loop (connect last point to first)
-        push!(xs, xs[1]); push!(ys, ys[1]); push!(zs, zs[1])
-        
-        # Draw the physical wire
-        lines!(ax, xs, ys, zs, color = :blue, linewidth = 2, alpha = 0.6)
-    end
+# Plot the Coils
+# Each coil is an array of quadrature points 'rs'
+for (i, c) in enumerate(coils)
+    # Extract X, Y, Z coordinates for the wire path
+    pts = c.rs
+    xs = [p[1] for p in pts]
+    ys = [p[2] for p in pts]
+    zs = [p[3] for p in pts]
+    
+    # Close the loop (connect last point to first)
+    push!(xs, xs[1]); push!(ys, ys[1]); push!(zs, zs[1])
+    
+    # Draw the physical wire
+    lines!(ax, xs, ys, zs, color = :blue, linewidth = 2, alpha = 0.6)
+end
 
-    # Plot Poincare surface
-    scatter!(ax, poincare_x, poincare_y, poincare_z, color = :red, markersize = 4)
+# Plot Poincare surface
+scatter!(ax, poincare_x, poincare_y, poincare_z, color = :red, markersize = 4)
 
-    #Plot Magnetic Ridge
-    scatter!(ax, ridge_x,ridge_y, ridge_z, color = :purple, markersize = 4)
+#Plot Magnetic Ridge
+scatter!(ax, ridge_x,ridge_y, ridge_z, color = :purple, markersize = 4)
 
-    display(fig)
+display(fig)
 
