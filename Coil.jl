@@ -332,14 +332,18 @@ end
 #     xaxis = "Time (t)", yaxis = "u(t) (in μm)", label = "My Thick Line!") # legend=false
 # plot!(sol.t, t -> 0.5 * exp(1.01t), lw = 3, ls = :dash, label = "True Solution!"
 function follow_B_line(x0::AbstractVector{T}, L::T, coils::Union{Coil{T}, Vector{Coil{T}}}; 
-                       method=Vern8(), reltol=1e-12, abstol=1e-12) where {T}
+                       method=Vern8(), reltol=1e-12, abstol=1e-12, saveat=nothing, kwargs...) where {T}
     function f(x, _, _)
         B = eval_B(coils, x)
         B / sqrt(B'B)
     end
 
     prob = OrdinaryDiffEq.ODEProblem(f, x0, (T(0), L))
-    solve(prob, method, reltol = reltol, abstol = abstol)
+    if saveat === nothing
+        solve(prob, method; reltol = reltol, abstol = abstol, kwargs...)
+    else
+        solve(prob, method; reltol = reltol, abstol = abstol, saveat = saveat, kwargs...)
+    end
 end
 
 function get_B_map(L::T, coils::Union{Coil{T}, Vector{Coil{T}}}; 

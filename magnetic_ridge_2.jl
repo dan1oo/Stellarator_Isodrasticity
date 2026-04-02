@@ -39,6 +39,20 @@ const REF_XY_MAX_DIST = parse(Float64, get(ENV, "MAGNETIC_RIDGE_REF_XY_MAX", "0.
 # If "skip": ambiguous columns with no nearby JLD2 point are dropped. If "max_B": use max |B| there.
 const RIDGE_REF_FALLBACK = Symbol(get(ENV, "MAGNETIC_RIDGE_REF_FALLBACK", "skip"))
 
+# JLD2-guided efficiency: only run vertical search if nearest old sample is within this xy distance (m).
+# Set MAGNETIC_RIDGE_SIM_XY_MAX=Inf in the environment to scan the full padded xy box.
+const SIM_XY_MAX_DIST = let s = get(ENV, "MAGNETIC_RIDGE_SIM_XY_MAX", "")
+    if s == "" || s == "auto"
+        REF_XY_MAX_DIST + 0.25
+    else
+        parse(Float64, s)
+    end
+end
+
+# Minimum half-length of the z bracket around each column's z_ref (m); also scales with JLD2 z spread.
+const Z_HALF_MIN = parse(Float64, get(ENV, "MAGNETIC_RIDGE_Z_HALF_MIN", "0.12"))
+const Z_HALF_FACTOR = parse(Float64, get(ENV, "MAGNETIC_RIDGE_Z_HALF_FACTOR", "0.55"))
+
 # Finite-difference step along b̂ for ridge (peak) vs well filtering
 const RIDGE_CURV_EPS = 1e-5
 
@@ -114,7 +128,10 @@ function load_ridge_bounds(path::AbstractString)
     z_conf_min = minimum(rz) - CONFINEMENT_PAD_Z
     z_conf_max = maximum(rz) + CONFINEMENT_PAD_Z
 
-    return rx, ry, rz, x_min, x_max, y_min, y_max, z_min, z_max, r_conf_min, r_conf_max, z_conf_min, z_conf_max
+    rz_span = maximum(rz) - minimum(rz)
+    z_bracket_half = max(Z_HALF_FACTOR * rz_span + BOUND_PAD_Z, Z_HALF_MIN)
+
+    return rx, ry, rz, x_min, x_max, y_min, y_max, z_min, z_max, r_conf_min, r_conf_max, z_conf_min, z_conf_max, z_bracket_half
 end
 
 @inline function in_confinement(x, y, z, r_conf_min, r_conf_max, z_conf_min, z_conf_max)
@@ -160,11 +177,13 @@ function map_ridge_surface(
     z_conf_max,
     rx_old::Vector{Float64},
     ry_old::Vector{Float64},
-    rz_old::Vector{Float64};
+    rz_old::Vector{Float64},
+    z_bracket_half::Float64;
     nx::Int = NX,
     ny::Int = NY,
     ref_xy_max_dist::Float64 = REF_XY_MAX_DIST,
     ref_fallback::Symbol = RIDGE_REF_FALLBACK,
+    sim_xy_max_dist::Float64 = SIM_XY_MAX_DIST,
 ) where {T}
     ref_fallback ∈ (:skip, :max_B) || throw(ArgumentError("ref_fallback must be :skip or :max_B"))
 
@@ -176,10 +195,17 @@ function map_ridge_surface(
     ridge_points_z = Float64[]
 
     n_ambiguous_skipped = 0
+    n_skipped_xy = 0
     zs_buf = Float64[]  # reuse buffers to avoid per-column allocations
     Bs_buf = Float64[]
 
-    println("Volumetric ridge scan: nx=$nx ny=$ny, z ∈ [$z_min, $z_max]")
+    println("Volumetric ridge scan: nx=$nx ny=$ny, global z ∈ [$z_min, $z_max]")
+    println(
+        "JLD2-guided: per-column z search in [z_ref±$z_bracket_half] clipped to global z bounds",
+    )
+    println(
+        "xy gate: skip column if nearest JLD2 sample has d_xy > $sim_xy_max_dist (set MAGNETIC_RIDGE_SIM_XY_MAX=Inf to disable)",
+    )
     println(
         "Confinement filter: R ∈ [$r_conf_min, $r_conf_max], z ∈ [$z_conf_min, $z_conf_max]",
     )
@@ -189,9 +215,22 @@ function map_ridge_surface(
 
     for x in x_range
         for y in y_range
+            d_xy, z_ref = nearest_xy_zref(rx_old, ry_old, rz_old, x, y)
+            if d_xy > sim_xy_max_dist
+                n_skipped_xy += 1
+                continue
+            end
+
+            z_lo = max(z_min, z_ref - z_bracket_half)
+            z_hi = min(z_max, z_ref + z_bracket_half)
+            if z_lo >= z_hi
+                @warn "degenerate z bracket" z_lo z_hi z_ref x y
+                continue
+            end
+
             f_z(z) = d_normB_ds(cs, x, y, z)
             possible_zs = try
-                find_zeros(f_z, z_min, z_max)
+                find_zeros(f_z, z_lo, z_hi)
             catch e
                 @warn "find_zeros failed" exception = e x y
                 continue
@@ -216,7 +255,6 @@ function map_ridge_surface(
                 continue
             end
 
-            d_xy, z_ref = nearest_xy_zref(rx_old, ry_old, rz_old, x, y)
             if d_xy <= ref_xy_max_dist
                 k = 1
                 err_best = abs(zs_buf[1] - z_ref)
@@ -242,7 +280,7 @@ function map_ridge_surface(
     end
 
     println(
-        "Found $(length(ridge_points_z)) ridge points (one per grid column). Ambiguous multi-root columns skipped (no JLD2 within radius, fallback=skip): $n_ambiguous_skipped",
+        "Found $(length(ridge_points_z)) ridge points. Columns skipped (xy gate): $n_skipped_xy. Ambiguous multi-root (no JLD2 within ref radius, fallback=skip): $n_ambiguous_skipped",
     )
     return ridge_points_x, ridge_points_y, ridge_points_z
 end
@@ -251,12 +289,13 @@ end
 
 coils = get_coils_from_file(Float64, COIL_FILE, NQUAD)
 
-ridge_x_old, ridge_y_old, ridge_z_old, x_min, x_max, y_min, y_max, z_min, z_max, r_conf_min, r_conf_max, z_conf_min, z_conf_max =
+ridge_x_old, ridge_y_old, ridge_z_old, x_min, x_max, y_min, y_max, z_min, z_max, r_conf_min, r_conf_max, z_conf_min, z_conf_max, z_bracket_half =
     load_ridge_bounds(OLD_DATA_PATH)
 
 println(
     "Bounds from old data (padded): x ∈ [$x_min, $x_max], y ∈ [$y_min, $y_max], z search [$z_min, $z_max]",
 )
+println("JLD2 z span → bracket half-width z_bracket_half = $z_bracket_half m")
 
 rx, ry, rz = map_ridge_surface(
     coils,
@@ -273,6 +312,7 @@ rx, ry, rz = map_ridge_surface(
     ridge_x_old,
     ridge_y_old,
     ridge_z_old,
+    z_bracket_half,
 )
 
 # --- Plot: coils + single-valued ridge surface ----------------------------------
