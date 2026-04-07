@@ -35,8 +35,8 @@ const NQUAD = 64
 const CONF_PATH = raw"C:/Users/danie/Stellarator_Isodrasticity/data/confinement_zone/confinement_field_lines.jld2"
 
 # Grid resolution for the XY scan
-const NX = parse(Int, get(ENV, "MAGRID3_NX", "300"))
-const NY = parse(Int, get(ENV, "MAGRID3_NY", "300"))
+const NX = parse(Int, get(ENV, "MAGRID3_NX", "200"))
+const NY = parse(Int, get(ENV, "MAGRID3_NY", "200"))
 
 # XY scan region follows confinement footprint (angle-dependent annulus)
 const FOOTPRINT_NTHETA = parse(Int, get(ENV, "MAGRID3_FOOTPRINT_NTHETA", "180"))
@@ -45,6 +45,8 @@ const FOOTPRINT_INNER_PAD = parse(Float64, get(ENV, "MAGRID3_FOOTPRINT_INNER_PAD
 const XY_BOX_PAD = parse(Float64, get(ENV, "MAGRID3_XY_BOX_PAD", "0.03"))
 const PLOT_MASK_DEBUG = parse(Bool, get(ENV, "MAGRID3_PLOT_MASK_DEBUG", "true"))
 const MASK_ONLY = parse(Bool, get(ENV, "MAGRID3_MASK_ONLY", "false"))
+# Progress during ridge scan: print every N footprint (x,y) columns; 0 ≈ ~100 updates total
+const MAGRID3_PROGRESS_EVERY = parse(Int, get(ENV, "MAGRID3_PROGRESS_EVERY", "0"))
 
 # Hybrid local-confinement lookup parameters
 const XY_RADIUS_BASE = parse(Float64, get(ENV, "MAGRID3_XY_RADIUS_BASE", "0.06"))
@@ -334,7 +336,21 @@ function map_ridge_surface(
     no_root = 0
     multi_root_xy = 0
 
+    total_in_footprint = 0
+    for x in xs
+        for y in ys
+            total_in_footprint += in_xy_footprint(fp, x, y) ? 1 : 0
+        end
+    end
+    progress_every = if MAGRID3_PROGRESS_EVERY > 0
+        MAGRID3_PROGRESS_EVERY
+    else
+        max(1, total_in_footprint ÷ 100)
+    end
+
     println("Scan grid: nx=$nx ny=$ny (footprint-masked, non-rectangular effective domain)")
+    println("Footprint (x,y) columns to process: $total_in_footprint (progress every ~$progress_every)")
+    i_footprint = 0
     for x in xs
         for y in ys
             push!(grid_x, x)
@@ -344,6 +360,22 @@ function map_ridge_surface(
                 outside_footprint += 1
                 push!(grid_z, NaN)
                 continue
+            end
+
+            i_footprint += 1
+            if total_in_footprint > 0 &&
+               (i_footprint % progress_every == 0 || i_footprint == total_in_footprint)
+                pct = 100 * i_footprint / total_in_footprint
+                print(
+                    "\rRidge scan (inside footprint): ",
+                    i_footprint,
+                    " / ",
+                    total_in_footprint,
+                    " (",
+                    round(pct; digits = 1),
+                    "%)   ",
+                )
+                flush(stdout)
             end
 
             bounds = local_confine_bounds(idx, x, y, dx, dy)
@@ -383,7 +415,7 @@ function map_ridge_surface(
                 multi_root_xy += 1
                 push!(multi_ridge_xy_x, x)
                 push!(multi_ridge_xy_y, y)
-                push!(multi_ridge_valid_zs, copy(valid_z))
+                push!(multi_ridge_valid_zs, Base.copy(valid_z))
             end
             k = argmax(valid_B) # requested fallback for multi-root
             z_pick = valid_z[k]
@@ -397,6 +429,8 @@ function map_ridge_surface(
             push!(ridge_z, z_pick)
         end
     end
+
+    total_in_footprint > 0 && println()
 
     println("Valid ridge points: $(length(ridge_z))")
     println("Outside XY footprint mask: $outside_footprint")
